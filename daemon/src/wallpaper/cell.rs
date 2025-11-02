@@ -20,11 +20,11 @@ pub struct WallpaperBorrow<'a>(&'a mut Wallpaper);
 pub struct WallpaperBorrowMut<'a>(&'a mut Wallpaper);
 
 impl WallpaperCell {
-    const LAYOUT: std::alloc::Layout = std::alloc::Layout::new::<Wallpaper>();
+    const LAYOUT: ::alloc::alloc::Layout = ::alloc::alloc::Layout::new::<Wallpaper>();
     pub fn new(daemon: &mut crate::Daemon, output_info: OutputInfo) -> Self {
-        let ptr = unsafe { std::alloc::alloc(Self::LAYOUT) };
+        let ptr = unsafe { ::alloc::alloc::alloc(Self::LAYOUT) };
         if ptr.is_null() {
-            std::alloc::handle_alloc_error(Self::LAYOUT);
+            ::alloc::alloc::handle_alloc_error(Self::LAYOUT);
         }
         let inner = ptr.cast::<Wallpaper>();
         unsafe { inner.write(Wallpaper::new(daemon, output_info)) };
@@ -102,7 +102,7 @@ impl Drop for WallpaperCell {
         if clones > 0 {
             unsafe { clones_ptr.write(clones - 1) };
         } else {
-            unsafe { std::alloc::dealloc(self.0.cast(), Self::LAYOUT) };
+            unsafe { ::alloc::alloc::dealloc(self.0.cast(), Self::LAYOUT) };
         }
     }
 }

@@ -2,8 +2,19 @@
 //! them fail there is no point in continuing. All of the initialization code, for example, is full
 //! of `expects`, **on purpose**, because we **want** to unwind and exit when they happen
 
+#![no_std]
 #![cfg_attr(not(test), no_main)]
 #![cfg_attr(test, allow(unused))]
+
+extern crate alloc;
+extern crate origin;
+
+use ::alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 mod animations;
 mod cli;
@@ -23,7 +34,6 @@ use wayland::zwlr_layer_shell_v1::Layer;
 
 use core::{
     num::NonZeroI32,
-    ptr,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -34,9 +44,6 @@ use common::ipc::{
 use common::mmap::MmappedStr;
 use output_info::OutputInfo;
 
-/// Custom version of waybackend's match_enum_with_interface macro that handles
-/// errors gracefully instead of panicking. This prevents crashes when the compositor
-/// advertises protocol enum values (e.g., DRM formats) that waybackend doesn't recognize.
 macro_rules! match_enum_with_interface {
     ($handler:ident, $object:ident, $msgs:ident, $(($variant:path, $interface:ident)),*$(,)?) => {
         match $object {
@@ -52,6 +59,63 @@ macro_rules! match_enum_with_interface {
     }
 }
 
+#[global_allocator]
+static GLOBAL_ALLOCATOR: talc::Talck<talc::locking::AssumeUnlockable, OomHandler> =
+    talc::Talc::new(OomHandler).lock();
+
+//struct OomHandler(Option<core::ptr::NonNull<u8>>);
+struct OomHandler;
+impl talc::OomHandler for OomHandler {
+    #[cold]
+    #[inline(never)]
+    fn handle_oom(talc: &mut talc::Talc<Self>, layout: core::alloc::Layout) -> Result<(), ()> {
+        let page_size = rustix::param::page_size();
+        let len = if page_size == 0 {
+            // if the page size hasn't been initialized yet, just do a large allocation.
+            layout.size().next_multiple_of(1 << 14)
+        } else {
+            let mut size = layout.size();
+            // for allocations larger than the page size, allocate an extra 1 / 8 of the requested
+            // bytes. This heuristic usually ensures we need not do several large allocations one
+            // after the other when extending the size of things.
+            if size > page_size {
+                size += size >> 3;
+            }
+            size.next_multiple_of(page_size)
+        };
+
+        // Note: as an optimization, we could use mremap on linux to extend the allocation size
+        // "in_place", for a efficient realloc. However, all our structs are very space efficient,
+        // and most of them will have few items at a time (it is unlikely anyone will have more than
+        // 4 outputs at once, and even that would probably be pretty rare). Because of this, the
+        // initial allocation with just a single page size tends to be enough for most systems. If
+        // the page size is particularly small, it will still probably be enough after just 2 or
+        // (really stretching it) 4 page sizes. Other than that, we only do large allocations with
+        // animated images. This means using mremap would not help all that much, since for the vast
+        // majority of users, there will only be 2 allocations anyway.
+        //
+        // By not supporting mremap, we do not need a special case for linux, and we also do not
+        // need to keep track of the last allocations's ptr and size.
+        let ptr = unsafe {
+            rustix::mm::mmap_anonymous(
+                core::ptr::null_mut(),
+                len,
+                rustix::mm::ProtFlags::READ.union(rustix::mm::ProtFlags::WRITE),
+                rustix::mm::MapFlags::PRIVATE,
+            )
+        };
+
+        match ptr {
+            Ok(ptr) => {
+                unsafe { talc.claim(talc::Span::from_base_size(ptr.cast(), len))? };
+                trace!("new allocation of size: {len}");
+                Ok(())
+            }
+            _ => Err(()),
+        }
+    }
+}
+
 // We need this because this might be set by signals, so we can't keep it in the daemon
 static EXIT: AtomicBool = AtomicBool::new(false);
 
@@ -63,7 +127,7 @@ fn should_daemon_exit() -> bool {
     EXIT.load(Ordering::Relaxed)
 }
 
-extern "C" fn signal_handler(_s: libc::c_int) {
+extern "C" fn signal_handler(_s: core::ffi::c_int) {
     exit_daemon();
 }
 
@@ -615,15 +679,22 @@ enum WaylandObject {
     FractionalScale,
 }
 
+#[allow(non_upper_case_globals)]
+#[unsafe(no_mangle)]
+pub static mut environ: *const *const core::ffi::c_char = core::ptr::null();
+
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 #[cfg(not(test))]
-pub extern "C" fn main(
-    argc: core::ffi::c_long,
-    argv: *const *const core::ffi::c_char,
-) -> core::ffi::c_long {
+pub extern "C" fn origin_main(argc: usize, argv: *mut *mut u8, envp: *mut *mut u8) -> i32 {
+    unsafe {
+        rustix::param::init(envp);
+        environ = envp.cast();
+    }
+
     // first, get the command line arguments and make the logger
-    let args = unsafe { core::slice::from_raw_parts(argv, argc as usize) };
+    let args: &[*const core::ffi::c_char] =
+        unsafe { core::slice::from_raw_parts(argv.cast(), argc) };
     let cli = match cli::Cli::new(args) {
         Ok(Some(cli)) => cli,
         Ok(None) => return 0,
@@ -643,7 +714,7 @@ pub extern "C" fn main(
     common::log::init(if cli.quiet {
         Filter::Error
     } else {
-        Filter::Info
+        Filter::Trace
     });
 
     #[cfg(debug_assertions)]
@@ -798,39 +869,34 @@ pub extern "C" fn main(
 }
 
 fn setup_signals() {
+    use origin::signal::{Sigaction, SigactionFlags, Signal, sig_ign, sigaction};
     // C data structure, expected to be zeroed out.
-    let mut sigaction: libc::sigaction = unsafe { core::mem::zeroed() };
-    unsafe { libc::sigemptyset(ptr::addr_of_mut!(sigaction.sa_mask)) };
+    let mut action = Sigaction {
+        sa_handler_kernel: Some(signal_handler),
+        sa_flags: SigactionFlags::empty(),
+        #[cfg(not(any(
+            target_arch = "csky",
+            target_arch = "loongarch64",
+            target_arch = "mips",
+            target_arch = "mips32r6",
+            target_arch = "mips64",
+            target_arch = "mips64r6",
+            target_arch = "riscv32",
+            target_arch = "riscv64"
+        )))]
+        sa_restorer: None,
+        sa_mask: rustix::runtime::KernelSigSet::empty(),
+    };
 
-    #[cfg(not(target_os = "aix"))]
-    {
-        sigaction.sa_sigaction = signal_handler as *const () as usize;
-    }
-    #[cfg(target_os = "aix")]
-    {
-        sigaction.sa_union.__su_sigaction = handler;
-    }
-
-    for signal in [libc::SIGINT, libc::SIGQUIT, libc::SIGTERM, libc::SIGHUP] {
-        let ret = unsafe { libc::sigaction(signal, ptr::addr_of!(sigaction), ptr::null_mut()) };
-        if ret != 0 {
-            error!("Failed to install signal handler!");
+    for signal in [Signal::INT, Signal::QUIT, Signal::TERM, Signal::HUP] {
+        if let Err(e) = unsafe { sigaction(signal, Some(action.clone())) } {
+            error!("Failed to install signal handler: {e}");
         }
     }
 
-    #[cfg(not(target_os = "aix"))]
-    {
-        sigaction.sa_sigaction = libc::SIG_IGN;
-    }
-    #[cfg(target_os = "aix")]
-    {
-        sigaction.sa_union.__su_sigaction = libc::SIG_IGN;
-    }
-
-    let signal = libc::SIGCHLD;
-    let ret = unsafe { libc::sigaction(signal, ptr::addr_of!(sigaction), ptr::null_mut()) };
-    if ret != 0 {
-        error!("Failed to install signal handler!");
+    action.sa_handler_kernel = sig_ign();
+    if let Err(e) = unsafe { sigaction(Signal::CHILD, Some(action)) } {
+        error!("Failed to install signal handler: {e}");
     }
 
     debug!("Finished setting up signal handlers");
@@ -863,7 +929,7 @@ impl SocketWrapper {
 
         let runtime_dir = match addr.parent() {
             Some(path) => path,
-            None => return Err("couldn't find a valid runtime directory".to_owned()),
+            None => return Err("couldn't find a valid runtime directory".to_string()),
         };
 
         if fs::access(&runtime_dir, fs::Access::EXISTS).is_err() {
@@ -921,4 +987,23 @@ fn sleep(duration: Timespec) {
         let d = duration - ACCURACY;
         _ = rustix::thread::nanosleep(&d);
     }
+}
+
+#[cold]
+#[inline(never)]
+#[panic_handler]
+#[cfg(not(test))]
+fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+    if let Some(loc) = info.location() {
+        common::log::fatal!(
+            "PANIC AT {}:{}:{}: {}",
+            loc.file(),
+            loc.line(),
+            loc.column(),
+            info.message()
+        );
+    } else {
+        common::log::fatal!("PANIC: {}", info.message());
+    }
+    origin::program::exit(-2);
 }

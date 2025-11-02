@@ -2,6 +2,7 @@ use core::num::NonZeroU8;
 
 use crate::{WaylandObject, wallpaper::WallpaperCell};
 use common::ipc::{PixelFormat, Transition, TransitionType};
+use core_maths::*;
 
 use super::keyframe::{AnimationSequence, Keyframe, Vector2, functions::BezierCurve};
 use waybackend::{Waybackend, objman::ObjectManager};

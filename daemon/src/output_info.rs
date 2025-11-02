@@ -1,6 +1,7 @@
 use common::ipc::Scale;
 use waybackend::{Waybackend, objman::ObjectManager, types::ObjectId};
 
+use ::alloc::boxed::Box;
 use core::num::NonZeroI32;
 
 use crate::WaylandObject;

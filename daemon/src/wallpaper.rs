@@ -1,3 +1,4 @@
+use ::alloc::{boxed::Box, format};
 use common::{
     cache::{get_previous_image_cache, read_cache_file},
     ipc::{BgImg, BgInfo, PixelFormat, Scale},
@@ -291,10 +292,6 @@ impl Wallpaper {
                         // SIG_IGN, and posix says that does not generate a zombie process (see
                         // `man 3p _EXIT`
 
-                        unsafe extern "C" {
-                            static environ: *const *const core::ffi::c_char;
-                        }
-
                         let cmd = format!(
                             "exec awww img \
                             --outputs='{output_name}' \
@@ -317,7 +314,7 @@ impl Wallpaper {
                                     rustix::runtime::execve(
                                         c"/bin/sh",
                                         args.as_ptr(),
-                                        environ as *const _,
+                                        crate::environ.cast(),
                                     )
                                 };
                                 panic!("execve failed: {err}");

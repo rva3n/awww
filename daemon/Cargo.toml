@@ -13,9 +13,13 @@ workspace = true
 common = { workspace = true }
 
 waybackend = { version = "0.10", default-features = false }
-libc = "0.2"
-rustix = { version = "1.1", default-features = false, features = [ "event", "runtime", "stdio", "termios" ] }
+rustix = { version = "1.1", default-features = false, features = [ "event", "runtime", "stdio", "use-explicitly-provided-auxv" ] }
 smallvec  = { version = "1.15", default-features = false, features = [ "union" ] }
+core_maths = { version = "0.1" }
+
+talc = { version = "4.4", default-features = false, features = [ "lock_api" ] }
+
+origin = { version = "0.26", default-features = false, features = [ "origin-start", "nightly", "signal" ] }
 
 [build-dependencies]
 waybackend-scanner = { version = "0.10", features = ["build-script"] }

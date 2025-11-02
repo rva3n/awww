@@ -1,3 +1,4 @@
+use ::alloc::boxed::Box;
 use common::log::error;
 use smallvec::SmallVec;
 use waybackend::{Waybackend, objman::ObjectManager};

@@ -1,8 +1,9 @@
 use crate::wayland::zwlr_layer_shell_v1::Layer;
+use ::alloc::borrow::Cow;
+use ::alloc::string::{String, ToString};
 use common::ipc::PixelFormat;
 use common::log;
 use core::ffi::CStr;
-use std::borrow::Cow;
 
 pub struct Cli {
     pub format: Option<PixelFormat>,
