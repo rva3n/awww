@@ -132,34 +132,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "awww"
-version = "0.12.1"
-dependencies = [
- "clap",
- "clap_complete",
- "common",
- "fast_image_resize",
- "fastrand",
- "image",
- "jxl-oxide",
- "jzon",
- "resvg",
- "rustix",
-]
-
-[[package]]
-name = "awww-daemon"
-version = "0.12.1"
-dependencies = [
- "common",
- "libc",
- "rustix",
- "smallvec",
- "waybackend",
- "waybackend-scanner",
-]
-
-[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -993,6 +965,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "oberonwall"
+version = "0.12.1"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "common",
+ "fast_image_resize",
+ "fastrand",
+ "image",
+ "jxl-oxide",
+ "jzon",
+ "resvg",
+ "rustix",
+]
+
+[[package]]
+name = "oberonwall-daemon"
+version = "0.12.1"
+dependencies = [
+ "common",
+ "libc",
+ "rustix",
+ "smallvec",
+ "waybackend",
+ "waybackend-scanner",
 ]
 
 [[package]]
