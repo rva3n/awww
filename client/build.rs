@@ -6,7 +6,7 @@ use clap_complete::{Shell, generate_to};
 include!("src/cli.rs");
 
 const COMPLETION_DIR: &str = "../completions";
-const APP_NAME: &str = "awww";
+const APP_NAME: &str = "oberonwall";
 
 fn main() -> Result<(), Error> {
     let outdir = completion_dir()?;

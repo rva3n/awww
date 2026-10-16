@@ -108,7 +108,7 @@ Options:
                 b"-V" | b"--version" => {
                     let stdout = unsafe { rustix::stdio::stdout() };
                     let bufs = [
-                        rustix::io::IoSlice::new(b"awww-daemon "),
+                        rustix::io::IoSlice::new(b"oberonwall-daemon "),
                         rustix::io::IoSlice::new(env!("CARGO_PKG_VERSION").as_bytes()),
                         rustix::io::IoSlice::new(b"\n"),
                     ];

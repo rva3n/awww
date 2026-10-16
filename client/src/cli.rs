@@ -151,7 +151,7 @@ pub enum CliImage {
 }
 
 #[derive(Parser)]
-#[command(version, name = "awww")]
+#[command(version, name = "oberonwall")]
 ///An Answer to your Wayland Wallpaper Woes
 ///
 ///Change what your monitors display as a background by controlling the awww daemon at runtime.

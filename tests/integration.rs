@@ -44,11 +44,11 @@ fn make_test_imgs() {
 }
 
 fn cmd() -> Command {
-    Command::cargo_bin("awww").unwrap()
+    Command::cargo_bin("oberonwall").unwrap()
 }
 
 fn start_daemon() -> Command {
-    let mut cmd = Command::cargo_bin("awww-daemon").unwrap();
+    let mut cmd = Command::cargo_bin("oberonwall-daemon").unwrap();
     cmd.arg("--no-cache");
     cmd
 }
